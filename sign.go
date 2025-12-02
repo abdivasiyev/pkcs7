@@ -21,6 +21,7 @@ type SignedData struct {
 	data, messageDigest []byte
 	digestOid           asn1.ObjectIdentifier
 	encryptionOid       asn1.ObjectIdentifier
+	withoutCerts        bool
 }
 
 // NewSignedData takes data and initializes a PKCS7 SignedData struct that is
@@ -291,9 +292,20 @@ func (sd *SignedData) GetSignedData() *signedData {
 	return &sd.sd
 }
 
+func (sd *SignedData) WithoutCertificates() {
+	sd.withoutCerts = true
+}
+
 // Finish marshals the content and its signers
 func (sd *SignedData) Finish() ([]byte, error) {
-	sd.sd.Certificates = marshalCertificates(sd.certs)
+	var buf bytes.Buffer
+	if !sd.withoutCerts {
+		for _, cert := range sd.certs {
+			buf.Write(cert.Raw)
+		}
+	}
+	sd.sd.Certificates, _ = marshalCertificateBytes(buf.Bytes())
+
 	inner, err := asn1.Marshal(sd.sd)
 	if err != nil {
 		return nil, err
@@ -379,16 +391,6 @@ func signAttributes(attrs []attribute, pkey crypto.PrivateKey, digestAlg crypto.
 
 type dsaSignature struct {
 	R, S *big.Int
-}
-
-// concats and wraps the certificates in the RawValue structure
-func marshalCertificates(certs []*x509.Certificate) rawCertificates {
-	var buf bytes.Buffer
-	for _, cert := range certs {
-		buf.Write(cert.Raw)
-	}
-	rawCerts, _ := marshalCertificateBytes(buf.Bytes())
-	return rawCerts
 }
 
 // Even though, the tag & length are stripped out during marshalling the
